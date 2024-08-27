@@ -1,7 +1,7 @@
 import shutil
 import time
 import CryptoFunc
-import Client.ConnFunc
+import ConnFunc
 import threading
 import tty
 import sys
@@ -41,57 +41,75 @@ def select_username(conn, private_key, public_key):
     while True:
         username = input("username: ") #get username from user
         
-        Client.ConnFunc.send_data(conn, CryptoFunc.encrypt_data(public_key, username))
-        error_message = CryptoFunc.decrypt_data(private_key, Client.ConnFunc.receive_data(conn)).decode()
+        ConnFunc.send_data(conn, CryptoFunc.encrypt_data_asym(public_key, username))
+        error_message = CryptoFunc.decrypt_data_asym(private_key, ConnFunc.receive_data(conn)).decode()
         if error_message == 'USERNAME OK':
             print("username ok")
             return username
         else:
             print(error_message)
 
-def chat(conn, private_key, public_key):
-    prev_msg = ""
-    threading.Thread(target=user_input_linux, args=(conn, public_key)).start()
+def chat(conn, username, sym_key):
+    msg_num = 0
+    threading.Thread(target=user_input_linux, args=(conn, sym_key, username)).start() #start thread for input
     while True:
-        Client.ConnFunc.send_data(conn, CryptoFunc.encrypt_data(public_key, "req")) #request chat
-        all_msg = CryptoFunc.decrypt_data(private_key, Client.ConnFunc.receive_data(conn)).decode() #receive all messages
-        if prev_msg != all_msg:
-            os.system("clear")
-            print(all_msg)
-        prev_msg = all_msg
-        time.sleep(0.5)
+        ConnFunc.send_data(conn, str(msg_num)) #request msg number
+        try:
+            #HALF BROKEN, will fix later
+            recv_message = ConnFunc.recv_sym_data(conn, sym_key) #receive requested message
+        except Exception as e:
+            recv_message = b"None"
+        if recv_message == b"None":
+            continue #if message "None" do nothing
+        else:
+            print(recv_message.decode()) #print received message
+            msg_num += 1
+        time.sleep(0.25)
 
-def update_input(user_input_list):
+def update_input(user_input_list, username):
     try:
         width, height = shutil.get_terminal_size() #get width and height of terminal
     except shutil.Error:
         width = 80 #if fail set width manualy
-    max_input_length = width - len(f"Send: ")
+    max_input_length = width - len(f"{username}> ")
     truncated_input = "".join(user_input_list)[-max_input_length:]
-    print("\rSend: " + (" " * max_input_length), end="\r")
-    print(f"Send: {truncated_input}", end="\r")
+    print("\r" + f"{username}> " + (" " * max_input_length), end="\r")
+    print(f"{username}> {truncated_input}", end="\r")
 
-def user_input_linux(conn, public_key):
+def user_input_linux(conn, sym_key, username):
     user_input_list = []
     while True:
         tty.setcbreak(sys.stdin.fileno())
         key = sys.stdin.read(1)
         if key:
-            if key == '\x7f' or key == '\x08':  # Backspace
+            if key == '\x7f' or key == '\x08':  #if backspace pressed
                 if user_input_list:
-                    user_input_list.pop()
-                    update_input(user_input_list)
-            elif key == '\n':
-                user_input_str = "".join(user_input_list)
-                if user_input_str:
-                    Client.ConnFunc.send_data(conn, CryptoFunc.encrypt_data(public_key, user_input_str))
+                    user_input_list.pop() #remove last char from list
+                    update_input(user_input_list, username) #update cli
+            elif key == '\n': # if enter pressed
+                user_input_str = "".join(user_input_list) #convert list to string
+                if user_input_str: #if not empty
+                    ConnFunc.send_sym_data(conn, sym_key, user_input_str) #send string to server
+                    print(" " * len(f"{username}> " + user_input_str), end="\r") #clear line
                     user_input_list = []  # Clear the input list
             else:
-                if len("".join(user_input_list)) < 750:
+                if len("".join(user_input_list)) < 750: #check if input is under the limit
                     user_input_list.append(key)
-                    update_input(user_input_list)
+                    update_input(user_input_list, username)
         time.sleep(0.01)
 
+
+
+
+
+
+
+
+
+
+
+
+#NEEDS TO BE WORKED ON
 def user_input_windows(conn, server_public_key, fernet):
     global user_input_list, user_input_str
     while not exit_p:
@@ -112,6 +130,7 @@ def user_input_windows(conn, server_public_key, fernet):
         time.sleep(0.0001)
     conn.close()
     print(bcolors.WHITE + "closed connection")
+
 
 def check_window_focus_windows():
     global window_focus
