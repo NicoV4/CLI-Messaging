@@ -55,7 +55,7 @@ def select_username(conn, private_key, public_key):
 
 def chat(conn, username, sym_key):
     msg_num = 0
-    if platform.system() == "Linnux":
+    if platform.system() == "Linux":
         threading.Thread(target=user_input_linux, args=(conn, sym_key, username)).start() #start thread for input
     elif platform.system() == "Windows":
          threading.Thread(target=user_input_windows, args=(conn, sym_key, username)).start() #start thread for input
