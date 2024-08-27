@@ -1,13 +1,17 @@
+import os
+import platform
 import shutil
 import time
 import CryptoFunc
 import ConnFunc
 import threading
-import tty
+if platform.system() == "Linux":
+    import tty
+elif platform.system() == "Windows":
+    import msvcrt
 import sys
-import os
+
 #import termios
-#import msvcrt
 
 class bcolors:
     PURPLE = '\033[95m'
@@ -51,7 +55,10 @@ def select_username(conn, private_key, public_key):
 
 def chat(conn, username, sym_key):
     msg_num = 0
-    threading.Thread(target=user_input_linux, args=(conn, sym_key, username)).start() #start thread for input
+    if platform.system() == "Linnux":
+        threading.Thread(target=user_input_linux, args=(conn, sym_key, username)).start() #start thread for input
+    elif platform.system() == "Windows":
+         threading.Thread(target=user_input_windows, args=(conn, sym_key, username)).start() #start thread for input
     while True:
         ConnFunc.send_data(conn, str(msg_num)) #request msg number
         try:
@@ -72,7 +79,11 @@ def update_input(user_input_list, username):
     except shutil.Error:
         width = 80 #if fail set width manualy
     max_input_length = width - len(f"{username}> ")
-    truncated_input = "".join(user_input_list)[-max_input_length:]
+    if platform.system() == "Linux":
+        truncated_input = "".join(user_input_list)[-max_input_length:]
+    elif platform.system() == "Windows":
+        max_input_length-=2
+        truncated_input = "".join(user_input_list)[-max_input_length:]
     print("\r" + f"{username}> " + (" " * max_input_length), end="\r")
     print(f"{username}> {truncated_input}", end="\r")
 
@@ -90,48 +101,39 @@ def user_input_linux(conn, sym_key, username):
                 user_input_str = "".join(user_input_list) #convert list to string
                 if user_input_str: #if not empty
                     ConnFunc.send_sym_data(conn, sym_key, user_input_str) #send string to server
-                    print(" " * len(f"{username}> " + user_input_str), end="\r") #clear line
                     user_input_list = []  # Clear the input list
+                    update_input(user_input_list, username)
+                    #print(" " * len(f"{username}> " + user_input_str), end="\r") #clear line
+            else:
+                if len("".join(user_input_list)) < 750: #check if input is under the limit
+                    user_input_list.append(key)
+                    update_input(user_input_list, username)
+        time.sleep(0.01)
+        
+def user_input_windows(conn, sym_key, username):
+    user_input_list = []
+    while True:
+        if msvcrt.kbhit(): #if input
+            key = msvcrt.getwch() #get key
+            if key == '\x08':  #if backspace pressed
+                if user_input_list:
+                    user_input_list.pop() #remove last char from list
+                    update_input(user_input_list, username) #update cli
+            elif key == '\r': # if enter pressed
+                user_input_str = "".join(user_input_list) #convert list to string
+                if user_input_str: #if not empty
+                    ConnFunc.send_sym_data(conn, sym_key, user_input_str) #send string to server
+                    user_input_list = []  # Clear the input list
+                    update_input(user_input_list, username)
+                    #print(" " * len(f"{username}> " + user_input_str), end="\r") #clear line
+                    
             else:
                 if len("".join(user_input_list)) < 750: #check if input is under the limit
                     user_input_list.append(key)
                     update_input(user_input_list, username)
         time.sleep(0.01)
 
-
-
-
-
-
-
-
-
-
-
-
-#NEEDS TO BE WORKED ON
-def user_input_windows(conn, server_public_key, fernet):
-    global user_input_list, user_input_str
-    while not exit_p:
-        if msvcrt.kbhit(): #if input
-            user_input = msvcrt.getwch() #get key
-            if user_input == "\x08":  #if backspace pressed
-                if user_input_list: #if list not empty
-                    user_input_list.pop() #remove last character from input list
-                    update_input()
-            elif user_input == "\r": #if enter key is pressed
-                if user_input_list: #if input is not empty
-                    user_input_str = "".join(user_input_list) #join list to string
-                    commands(user_input_str, conn, fernet)
-                    user_input_list = []
-            elif len(user_input_list) < 750: #if the input is less than 500 characters
-                user_input_list.append(user_input) #add key to list
-                update_input()
-        time.sleep(0.0001)
-    conn.close()
-    print(bcolors.WHITE + "closed connection")
-
-
+#needs fixing
 def check_window_focus_windows():
     global window_focus
     executable_path = os.path.abspath(sys.argv[0])
